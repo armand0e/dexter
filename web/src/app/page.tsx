@@ -25,7 +25,7 @@ import type {
   ProgressStatus,
 } from "@/types/dexter"
 
-const API_BASE = process.env.NEXT_PUBLIC_DEXTER_API_BASE ?? "http://localhost:8000"
+// Use same-origin Next.js API routes which proxy to the backend container.
 
 type RunState = "idle" | "running" | "done" | "error"
 
@@ -160,6 +160,7 @@ function useDexterRun() {
   const [error, setError] = useState<string>("")
   const { logs, pushLog, reset } = useDexterLogs()
   const eventSourceRef = useRef<EventSource | null>(null)
+  const finishedRef = useRef<boolean>(false)
 
   const closeStream = useCallback(() => {
     eventSourceRef.current?.close()
@@ -259,6 +260,7 @@ function useDexterRun() {
           if (typeof event.answer === "string" && event.answer) {
             setAnswer(event.answer)
           }
+          finishedRef.current = true
           setRunState("done")
           pushLog({
             kind: "info",
@@ -268,6 +270,7 @@ function useDexterRun() {
           closeStream()
           break
         case "error":
+          finishedRef.current = true
           setError(event.message)
           setRunState("error")
           pushLog({
@@ -301,7 +304,7 @@ function useDexterRun() {
       setRunState("running")
 
       try {
-        const response = await fetch(`${API_BASE}/api/run`, {
+        const response = await fetch(`/api/run`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -320,7 +323,7 @@ function useDexterRun() {
         const { run_id } = (await response.json()) as { run_id: string }
         setRunId(run_id)
 
-        const stream = new EventSource(`${API_BASE}/api/run/${run_id}/events`)
+        const stream = new EventSource(`/api/run/${run_id}/events`)
         eventSourceRef.current = stream
 
         stream.onmessage = (event) => {
@@ -336,6 +339,11 @@ function useDexterRun() {
 
         stream.onerror = (ev) => {
           console.error("EventSource error", ev)
+          if (finishedRef.current) {
+            // Stream ended after completion; do not surface as an error.
+            closeStream()
+            return
+          }
           setError("Lost connection to Dexter.")
           setRunState("error")
           closeStream()

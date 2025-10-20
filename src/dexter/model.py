@@ -10,9 +10,15 @@ from openai import APIConnectionError
 
 from dexter.prompts import DEFAULT_SYSTEM_PROMPT
 
-# Initialize the OpenAI client
-# Make sure your OPENAI_API_KEY is set in your environment
-llm = ChatOpenAI(model="gpt-4.1", temperature=0, api_key=os.getenv("OPENAI_API_KEY"))
+# Initialize the OpenAI client (env-driven, defaults preserved)
+_model_name = os.getenv("DEXTER_LLM_MODEL", "gpt-4.1")
+_api_key = os.getenv("OPENAI_API_KEY")
+_base_url = os.getenv("OPENAI_API_BASE")
+
+if _base_url:
+    llm = ChatOpenAI(model=_model_name, temperature=0, api_key=_api_key, base_url=_base_url)
+else:
+    llm = ChatOpenAI(model=_model_name, temperature=0, api_key=_api_key)
 
 def call_llm(
     prompt: str,
@@ -29,9 +35,19 @@ def call_llm(
 
   runnable = llm
   if output_schema:
-      runnable = llm.with_structured_output(output_schema, method="function_calling")
+      _method = os.getenv("DEXTER_LLM_STRUCTURED_OUTPUT_METHOD", "function_calling").strip().lower()
+      if _method == "none":
+          runnable = llm
+      elif _method in ("function_calling", "json_schema"):
+          runnable = llm.with_structured_output(output_schema, method=_method)
+      else:
+          runnable = llm.with_structured_output(output_schema, method="function_calling")
   elif tools:
-      runnable = llm.bind_tools(tools)
+      _tool_bind = os.getenv("DEXTER_LLM_TOOL_BIND", "bind").strip().lower()
+      if _tool_bind == "bind":
+          runnable = llm.bind_tools(tools)
+      else:
+          runnable = llm
   
   chain = prompt_template | runnable
   

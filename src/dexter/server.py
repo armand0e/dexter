@@ -43,7 +43,6 @@ class AgentSession:
             while True:
                 payload = await self.queue.get()
                 yield {
-                    "event": payload.get("type", "message"),
                     "data": json.dumps(payload, ensure_ascii=False),
                 }
                 if payload.get("type") in {"done", "error"}:
