@@ -23,21 +23,24 @@ export async function GET(_req: NextRequest, context: { params: { run_id: string
     return new Response(`Upstream error: ${upstream.statusText}`, { status: upstream.status })
   }
 
-  const stream = new ReadableStream({
+  const stream = new ReadableStream<Uint8Array>({
     start(controller2) {
-      const reader = upstream.body!.getReader()
-      const pump = (): any =>
+      const reader: ReadableStreamDefaultReader<Uint8Array> = upstream.body!.getReader()
+      type ReadResult = ReadableStreamReadResult<Uint8Array>
+      const pump = (): Promise<void> =>
         reader
           .read()
-          .then(({ done, value }) => {
-            if (done) {
+          .then((res: ReadResult): void | Promise<void> => {
+            if (res.done) {
               controller2.close()
               return
             }
-            if (value) controller2.enqueue(value)
+            if (res.value) controller2.enqueue(res.value)
             return pump()
           })
-          .catch((err) => controller2.error(err))
+          .catch((err: unknown) => {
+            controller2.error(err instanceof Error ? err : new Error(String(err)))
+          })
       return pump()
     },
     cancel() {
