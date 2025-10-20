@@ -70,6 +70,13 @@ def show_progress(message: str, success_message: str = ""):
     def decorator(func: Callable) -> Callable:
         @wraps(func)
         def wrapper(*args, **kwargs):
+            maybe_self = args[0] if args else None
+            logger = getattr(maybe_self, "logger", None)
+            progress_cm = getattr(logger, "progress", None) if logger else None
+            if callable(progress_cm):
+                with progress_cm(message, success_message):
+                    return func(*args, **kwargs)
+
             spinner = Spinner(message, color=Colors.CYAN)
             spinner.start()
             try:
